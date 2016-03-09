@@ -1,0 +1,27 @@
+{
+  "name": "wget.js",
+  "version": "0.0.1",
+  "description": "Node.js wget-like alternative",
+  "license": "MIT",
+  "author": {
+    "name": "Standa Opichal",
+    "email": "opichals@gmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:opichals/wget.js.git"
+  },
+
+  "main": "wget.js",
+  "bin": {
+    "wget.js": "./wget.js"
+  },
+
+  "dependencies": {
+    "yargs": "^4.3.2",
+    "http-request": "^0.7.0",
+    "cheerio": "^0.20.0",
+    "mmmagic": "^0.4.1",
+    "shelljs": "^0.6.0"
+  }
+}
