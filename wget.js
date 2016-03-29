@@ -51,6 +51,13 @@ function wget(urlString, options) {
             res.data = content;
             res.$ = cheerio.load(content, {decodeEntities: false});
 
+            if (!options.recursive) {
+                options.process(res, options);
+                next();
+                return;
+            }
+
+            // recursively go through the links
             var hrefs = [];
             res.$('a[href]').each((idx, e) => hrefs.push(e.attribs.href));
 
@@ -95,6 +102,13 @@ var argv = require('yargs')
     .option('np', {
         alias: 'no-parent',
         describe: `don't ascend to the parent directory`,
+        boolean: true,
+        default: false
+    })
+    .option('r', {
+        alias: 'recursive',
+        describe: `specify recursive download`,
+        boolean: true,
         default: false
     })
     .option('process', {
@@ -112,7 +126,9 @@ var argv = require('yargs')
 var firstUrl = argv._.shift();
 
 // single origin only
+firstUrl = firstUrl.match(/\w+:\/\//) ? firstUrl : 'http://' + firstUrl;
 var parsedFirst = url.parse(firstUrl);
+
 argv.acceptHref = href => {
     var parsedHref = url.parse(href);
     return parsedHref.host === parsedFirst.host &&
@@ -132,10 +148,12 @@ try {
     try {
         argv.process = eval(argv.process);
     } catch(e) {
-        argv.process = (res) => {
-            console.log('Done', res.url, res.code);
-        };
+        argv.process = undefined;
     }
+
+    argv.process = argv.process || (res => {
+        console.log('Done', res.url, res.code);
+    });
 }
 
 argv.headers = {
