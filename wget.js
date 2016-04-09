@@ -2,8 +2,21 @@
 'use strict';
 
 var url = require('url');
+var path = require('path');
 var client = require('http-request');
 var cheerio = require('cheerio');
+var shell = require('shelljs');
+
+function fname(urlString) {
+    var parsed = url.parse(urlString);
+    var pathname = parsed.pathname.replace(/\/(index\.html)?$/, '/index.html');
+    return parsed.hostname + pathname.split('/').map(encodeURIComponent).join('/') + (parsed.query ? encodeURIComponent('?' + parsed.query) : '');
+}
+
+function writeAsset(name, res) {
+    shell.mkdir('-p', path.dirname(name));
+    fs.writeFileSync(name, res.data, 'utf8');
+}
 
 // keepalive
 function setKeepalive() {
@@ -73,7 +86,7 @@ function wget(urlString, options) {
                     var entry = options._visited[absHref];
                     if (!entry) {
                         options._visited[absHref] = true;
-                        console.log('href', absHref);
+                        console.log('href', absHref, fname(absHref));
 
                         options._.push(absHref);
                     }
@@ -110,6 +123,12 @@ var argv = require('yargs')
         describe: `specify recursive download`,
         boolean: true,
         default: false
+    })
+    .option('P', {
+        alias: 'directory-prefix',
+        describe: `save files to PREFIX/...`,
+        string: true,
+        default: ''
     })
     .option('process', {
         describe: `javascript module/function handling the contents`,
@@ -151,8 +170,11 @@ try {
         argv.process = undefined;
     }
 
+    var fs = require('fs');
     argv.process = argv.process || (res => {
-        console.log('Done', res.url, res.code);
+        var name = path.normalize(path.join(argv.P, fname(res.url)));
+        writeAsset(name, res);
+        console.log('Done', res.url, res.code, '->', fname(res.url));
     });
 }
 
