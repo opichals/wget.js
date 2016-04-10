@@ -1,8 +1,15 @@
 {
   "name": "wget.js",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Node.js wget-like alternative",
   "license": "MIT",
+  "keywords": [
+    "wget",
+    "curl",
+    "http",
+    "request",
+    "download"
+  ],
   "author": {
     "name": "Standa Opichal",
     "email": "opichals@gmail.com"
