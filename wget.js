@@ -15,7 +15,7 @@ function fname(urlString) {
 
 function writeAsset(name, res) {
     shell.mkdir('-p', path.dirname(name));
-    fs.writeFileSync(name, res.data, 'utf8');
+    fs.writeFileSync(name, res.buffer);
 }
 
 // keepalive
@@ -28,6 +28,44 @@ function setKeepalive() {
     https.globalAgent = keepAliveAgent;
 }
 
+function parseRequest(res, options) {
+    if (res.headers['content-type'] !== 'text/html') {
+        return;
+    }
+
+    res.$ = cheerio.load(res.buffer.toString(), {decodeEntities: false});
+
+    if (!options.recursive) {
+        return;
+    }
+
+    // recursively go through the links
+    var hrefs = [];
+
+    // see http://html5doctor.com/microdata/ for the attributes...?
+    res.$('a[href], link[href]').each((idx, e) => hrefs.push(e.attribs.href));
+    res.$('script[src], img[src], embed[src], iframe[src], audio[src], video[src]').each((idx, e) => hrefs.push(e.attribs.src));
+
+    var base = res.$('html head base[href]').attr('href') || res.url;
+    hrefs.forEach(href => {
+        var absHref = url.resolve(base, href);
+
+        // strip the href fragment
+        absHref = absHref.replace(/\#.*/, '');
+
+        if (options.acceptHref(absHref, href)) {
+            options._visited = options._visited || {};
+            var entry = options._visited[absHref];
+            if (!entry) {
+                options._visited[absHref] = true;
+                // console.log('href', absHref, fname(absHref));
+
+                options._.push(absHref);
+            }
+        }
+    });
+}
+
 function wget(urlString, options) {
     if (!urlString) return;
 
@@ -36,7 +74,7 @@ function wget(urlString, options) {
         url: urlString,
         headers: options.headers,
 
-        stream: true,
+        // stream: true,
         noRedirect: false
     };
     client.get(fetchOpts, function(err, res) {
@@ -52,50 +90,28 @@ function wget(urlString, options) {
             return;
         }
 
-        res.url = urlString;
-        if (res.headers['content-type'] !== 'text/html') {
-            next();
-            return;
-        }
-
-        var content = '';
-        res.stream.on('data', chunk => content += chunk);
-        res.stream.on('end', function() {
-            res.data = content;
-            res.$ = cheerio.load(content, {decodeEntities: false});
-
-            if (!options.recursive) {
-                options.process(res, options);
-                next();
-                return;
-            }
-
-            // recursively go through the links
-            var hrefs = [];
-            res.$('a[href]').each((idx, e) => hrefs.push(e.attribs.href));
-
-            var base = res.$('html head base[href]').attr('href') || res.url;
-            hrefs.forEach(href => {
-                var absHref = url.resolve(base, href);
-
-                // strip the href fragment
-                absHref = absHref.replace(/\#.*/, '');
-
-                if (options.acceptHref(absHref, href)) {
-                    options._visited = options._visited || {};
-                    var entry = options._visited[absHref];
-                    if (!entry) {
-                        options._visited[absHref] = true;
-                        console.log('href', absHref, fname(absHref));
-
-                        options._.push(absHref);
-                    }
-                }
-            });
-
+        function onEnd() {
+            parseRequest(res, options);
             options.process(res, options);
             next();
-        });
+        }
+
+        res.url = urlString;
+
+        if (!res.buffer) {
+            var content = [];
+            res.stream.on('error', function(err) {
+                console.error('error:', err);
+            });
+            res.stream.on('data', chunk => (console.log('data', chunk.length), content.push(chunk)));
+            res.stream.on('end', () => {
+                res.buffer = Buffer.concat(content);
+                onEnd();
+            });
+        } else {
+            onEnd();
+        }
+
     });
 }
 
