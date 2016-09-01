@@ -8,10 +8,24 @@ var client = require('http-request');
 var cheerio = require('cheerio');
 var shell = require('shelljs');
 
-function fname(urlString) {
+function fname(urlString, res) {
     var parsed = url.parse(urlString);
+    parsed.query = parsed.query ? encodeURIComponent('?' + parsed.query) : '';
+
+    if (res) {
+        const dispositions = (res.headers['content-disposition'] || '').split(/;\s+/).reduce((map, kv) => {
+            const pairs = kv.split('=');
+            map[pairs[0]] = (pairs[1] || '').replace(/^\"?(.*?)\"?$/, '$1');
+            return map;
+        }, {});
+
+        if (dispositions.filename) {
+            return parsed.hostname + '/' + dispositions.filename;
+        }
+    }
+
     var pathname = parsed.pathname.replace(/\/(index\.html)?$/, '/index.html');
-    return parsed.hostname + pathname.split('/').map(encodeURIComponent).join('/') + (parsed.query ? encodeURIComponent('?' + parsed.query) : '');
+    return parsed.hostname + pathname.split('/').map(encodeURIComponent).join('/') + parsed.query;
 }
 
 function writeAsset(name, res) {
@@ -30,26 +44,31 @@ function setKeepalive() {
 }
 
 function parseRequest(res, options) {
+    res.pathname = path.normalize(path.join(options.P, fname(res.url, res)));
+
     if (res.headers['content-type'] !== 'text/html') {
         return;
     }
 
     res.$ = cheerio.load(res.buffer.toString(), {decodeEntities: false});
+}
+
+function processRequest(res, options) {
+    options.process(res, options);
 
     if (!options.recursive) {
         return;
     }
 
     // recursively go through the links
-    var hrefs = [];
-
-    // see http://html5doctor.com/microdata/ for the attributes...?
-    res.$('a[href], link[href]').each((idx, e) => hrefs.push(e.attribs.href));
-    res.$('script[src], img[src], embed[src], iframe[src], audio[src], video[src]').each((idx, e) => hrefs.push(e.attribs.src));
-
     var base = res.$('html head base[href]').attr('href') || res.url;
-    hrefs.forEach(href => {
-        var absHref = url.resolve(base, href);
+
+    const handleElement = (idx, e) => {
+        const attribs = e.attribs;
+        const src = attribs.src;
+        const href = attribs.href;
+
+        var absHref = url.resolve(base, href || src);
 
         // strip the href fragment
         absHref = absHref.replace(/\#.*/, '');
@@ -61,10 +80,25 @@ function parseRequest(res, options) {
                 options._visited[absHref] = true;
                 // console.log('href', absHref, fname(absHref));
 
+                if (options.convertLinks) {
+                    const pathname = fname(absHref);
+                    if (href) {
+                        e.attribs.href = pathname;
+                    }
+                    if (src) {
+                       e.attribs.src = pathname;
+                    }
+                }
+
                 options._.push(absHref);
             }
         }
-    });
+    };
+
+    // see http://html5doctor.com/microdata/ for the attributes...?
+    res.$('a[href], link[href]').each(handleElement);
+    res.$('script[src], img[src], embed[src], iframe[src], audio[src], video[src]').each(handleElement);
+
 }
 
 function wget(urlString, options) {
@@ -93,7 +127,7 @@ function wget(urlString, options) {
 
         function onEnd() {
             parseRequest(res, options);
-            options.process(res, options);
+            processRequest(res, options);
             next();
         }
 
@@ -140,6 +174,11 @@ var argv = require('yargs')
         describe: `specify recursive download`,
         boolean: true,
         default: false
+    })
+    .option('k', {
+        alias: 'convert-links',
+        describe: `make links in downloaded HTML or CSS point to local files`,
+        optional: true
     })
     .option('P', {
         alias: 'directory-prefix',
@@ -198,7 +237,7 @@ function setupProcessOption(argv) {
     });
 }
 
-if (argv.M) {
+if (argv.processModule) {
     try {
         argv.process = require(argv.M);
     } catch(e) {
