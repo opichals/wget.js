@@ -3,6 +3,7 @@
 
 var url = require('url');
 var path = require('path');
+var fs = require('fs');
 var client = require('http-request');
 var cheerio = require('cheerio');
 var shell = require('shelljs');
@@ -146,8 +147,13 @@ var argv = require('yargs')
         string: true,
         default: ''
     })
+    .option('M', {
+        alias: 'process-module',
+        describe: `javascript module handling the contents`,
+        optional: true
+    })
     .option('process', {
-        describe: `javascript module/function handling the contents`,
+        describe: `javascript function handling the contents (overriden by -M)`,
         optional: true
     })
     // .alias('H', 'header')
@@ -177,21 +183,30 @@ if (argv.np) {
     })(argv.acceptHref);
 }
 
-try {
-    argv.process = require(argv.process);
-} catch(e) {
+function setupProcessOption(argv) {
     try {
         argv.process = eval(argv.process);
     } catch(e) {
+        console.error('Error parsing --process arg:', e);
         argv.process = undefined;
     }
 
-    var fs = require('fs');
     argv.process = argv.process || (res => {
         var name = path.normalize(path.join(argv.P, fname(res.url)));
         writeAsset(name, res);
         console.log('Done', res.url, res.code, '->', fname(res.url));
     });
+}
+
+if (argv.M) {
+    try {
+        argv.process = require(argv.M);
+    } catch(e) {
+        console.error('Error in using the -M module:', e);
+        setupProcessOption(argv)
+    }
+} else {
+    setupProcessOption(argv)
 }
 
 argv.headers = {
