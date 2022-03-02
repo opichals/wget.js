@@ -29,7 +29,7 @@
     "cheerio": "^0.20.0",
     "http-request": "^0.7.0",
     "mmmagic": "^0.4.1",
-    "shelljs": "^0.6.0",
+    "shelljs": "^0.8.5",
     "yargs": "^4.3.2"
   },
   "devDependencies": {
